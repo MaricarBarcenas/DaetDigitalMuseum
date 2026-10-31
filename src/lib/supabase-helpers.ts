@@ -42,18 +42,26 @@ export async function fetchCategories() {
   return data;
 }
 
-export async function logQrScan(artifactId: string) {
-  const ua = navigator.userAgent;
-  const isMobile = /Mobile|Android|iPhone/i.test(ua);
-  const browser = /Chrome/i.test(ua) ? "Chrome" : /Firefox/i.test(ua) ? "Firefox" : /Safari/i.test(ua) ? "Safari" : "Other";
+export const logQrScan = async (artifactId: string) => {
+  const userAgent = window.navigator.userAgent;
+  let deviceType = "Desktop";
 
-  await supabase.from("qr_scans").insert({
-    artifact_id: artifactId,
-    device_type: isMobile ? "Mobile" : "Desktop",
-    browser,
-    user_agent: ua,
-  });
-}
+  if (/Mobi|Android|iPhone/i.test(userAgent)) {
+    deviceType = "Mobile";
+  } else if (/Tablet|iPad/i.test(userAgent)) {
+    deviceType = "Tablet";
+  }
+
+  const { error } = await supabase
+    .from("qr_scans")
+    .insert({
+      artifact_id: artifactId,
+      device_type: deviceType,
+      user_agent: userAgent,
+    });
+
+  if (error) console.error("Error logging scan:", error);
+};
 
 export async function incrementViewCount(artifactId: string) {
   await supabase.rpc("increment_view_count", { artifact_uuid: artifactId });

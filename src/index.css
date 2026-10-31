@@ -6,89 +6,88 @@
 
 @layer base {
   :root {
-    --background: 30 15% 95%;
-    --foreground: 30 10% 10%;
+    /* Main Palette: Refined Glacial Blue & Deep Indigo */
+    --background: 214 32% 98%;      /* Glacial White */
+    --foreground: 224 71% 4%;       /* Midnight Navy */
 
-    --card: 30 20% 97%;
-    --card-foreground: 30 10% 10%;
+    --card: 214 32% 100%;           /* Crisp White */
+    --card-foreground: 224 71% 4%;
 
-    --popover: 30 20% 97%;
-    --popover-foreground: 30 10% 10%;
+    --popover: 214 32% 100%;
+    --popover-foreground: 224 71% 4%;
 
-    --primary: 42 55% 55%;
-    --primary-foreground: 30 10% 10%;
+    /* Primary: Cerulean Indigo */
+    --primary: 221 83% 45%;         /* Deep, rich Blue */
+    --primary-foreground: 210 40% 98%;
 
-    --secondary: 30 15% 90%;
-    --secondary-foreground: 30 10% 20%;
+    /* Secondary: Soft Slate Blue */
+    --secondary: 214 32% 91%;       
+    --secondary-foreground: 221 83% 20%;
 
-    --muted: 30 10% 92%;
-    --muted-foreground: 30 8% 45%;
+    --muted: 214 20% 94%;
+    --muted-foreground: 215 25% 40%;
 
-    --accent: 42 55% 55%;
-    --accent-foreground: 30 10% 10%;
+    --accent: 217 91% 60%;          /* Vibrant Blue for subtle highlights */
+    --accent-foreground: 210 40% 98%;
 
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 100%;
+    /* Status Colors with Blue Undertones */
+    --destructive: 0 74% 42%;       /* Deep Crimson */
+    --destructive-foreground: 210 40% 98%;
+    
+    --success: 160 84% 39%;         /* Emerald with a touch of Cyan */
+    --success-foreground: 210 40% 98%;
 
-    --border: 30 15% 85%;
-    --input: 30 15% 85%;
-    --ring: 42 55% 55%;
+    --border: 214 32% 88%;
+    --input: 214 32% 88%;
+    --ring: 221 83% 45%;
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;              /* Slightly softer corners */
 
-    --sidebar-background: 30 10% 10%;
-    --sidebar-foreground: 30 20% 90%;
-    --sidebar-primary: 42 55% 55%;
-    --sidebar-primary-foreground: 30 10% 10%;
-    --sidebar-accent: 30 10% 18%;
-    --sidebar-accent-foreground: 30 20% 90%;
-    --sidebar-border: 30 10% 20%;
-    --sidebar-ring: 42 55% 55%;
+    /* Sidebar - Professional Navy */
+    --sidebar-background: 224 71% 4%;
+    --sidebar-foreground: 214 32% 91%;
+    --sidebar-primary: 221 83% 45%;
+    --sidebar-primary-foreground: 214 32% 98%;
+    --sidebar-accent: 224 71% 12%;
+    --sidebar-accent-foreground: 214 32% 98%;
+    --sidebar-border: 224 71% 15%;
+    --sidebar-ring: 221 83% 45%;
 
-    --museum-gold: 42 55% 55%;
-    --museum-dark: 30 10% 10%;
-    --museum-warm: 30 25% 22%;
-    --museum-cream: 30 30% 95%;
-    --museum-terracotta: 15 60% 50%;
+    /* Museum Specific Accents */
+    --museum-blue-dark: 224 71% 4%;
+    --museum-blue-primary: 221 83% 45%;
+    --museum-glass: 214 32% 91% / 0.7;
   }
 
   .dark {
-    --background: 30 10% 8%;
-    --foreground: 30 20% 92%;
+    /* Dark Mode: Deep Sea & Sapphire */
+    --background: 224 71% 2%;
+    --foreground: 214 32% 98%;
 
-    --card: 30 10% 12%;
-    --card-foreground: 30 20% 92%;
+    --card: 224 71% 4%;
+    --card-foreground: 214 32% 98%;
 
-    --popover: 30 10% 12%;
-    --popover-foreground: 30 20% 92%;
+    --popover: 224 71% 4%;
+    --popover-foreground: 214 32% 98%;
 
-    --primary: 42 55% 55%;
-    --primary-foreground: 30 10% 10%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 224 71% 4%;
 
-    --secondary: 30 10% 18%;
-    --secondary-foreground: 30 20% 85%;
+    --secondary: 224 71% 10%;
+    --secondary-foreground: 214 32% 98%;
 
-    --muted: 30 10% 18%;
-    --muted-foreground: 30 10% 55%;
+    --muted: 224 71% 12%;
+    --muted-foreground: 215 20% 65%;
 
-    --accent: 30 10% 18%;
-    --accent-foreground: 30 20% 92%;
+    --accent: 221 83% 45%;
+    --accent-foreground: 214 32% 98%;
 
     --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive-foreground: 210 40% 98%;
 
-    --border: 30 10% 20%;
-    --input: 30 10% 20%;
-    --ring: 42 55% 55%;
-
-    --sidebar-background: 30 10% 6%;
-    --sidebar-foreground: 30 20% 90%;
-    --sidebar-primary: 42 55% 55%;
-    --sidebar-primary-foreground: 30 10% 10%;
-    --sidebar-accent: 30 10% 14%;
-    --sidebar-accent-foreground: 30 20% 90%;
-    --sidebar-border: 30 10% 15%;
-    --sidebar-ring: 42 55% 55%;
+    --border: 224 71% 15%;
+    --input: 224 71% 15%;
+    --ring: 217 91% 60%;
   }
 }
 
@@ -100,24 +99,39 @@
     @apply bg-background text-foreground font-body antialiased;
   }
   h1, h2, h3, h4, h5, h6 {
-    @apply font-display;
+    @apply font-display tracking-tight;
   }
 }
 
 @layer utilities {
-  .text-gradient-gold {
-    background: linear-gradient(135deg, hsl(42 55% 55%), hsl(38 65% 65%), hsl(42 55% 55%));
+  /* Modern Cerulean Gradient */
+  .text-gradient-blue {
+    background: linear-gradient(135deg, hsl(221 83% 45%), hsl(217 91% 60%));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
+
+  /* Deep Oceanic Gradient for Hero Sections */
   .bg-gradient-museum {
-    background: linear-gradient(180deg, hsl(30 10% 10%) 0%, hsl(30 25% 22%) 100%);
+    background: linear-gradient(180deg, hsl(224 71% 4%) 0%, hsl(221 83% 15%) 100%);
   }
-  .bg-gradient-gold {
-    background: linear-gradient(135deg, hsl(42 55% 55%), hsl(38 65% 65%));
+
+  .bg-gradient-blue {
+    background: linear-gradient(135deg, hsl(221 83% 45%), hsl(217 91% 60%));
   }
+
+  /* Glassmorphism utility */
+  .glass-blue {
+    @apply bg-background/70 backdrop-blur-md border border-white/20;
+  }
+
+  /* Elevated Shadow with Indigo Tint */
   .shadow-museum {
-    box-shadow: 0 10px 40px -10px hsl(42 55% 55% / 0.15), 0 4px 12px -4px hsl(0 0% 0% / 0.1);
+    box-shadow: 0 10px 40px -10px hsl(221 83% 45% / 0.2), 0 4px 12px -4px hsl(224 71% 4% / 0.1);
+  }
+  
+  .bg-success {
+    background-color: hsl(var(--success));
   }
 }

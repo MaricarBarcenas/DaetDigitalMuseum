@@ -21,8 +21,7 @@ const Gallery = () => {
         <div className="container flex h-16 items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
             <ArrowLeft className="h-4 w-4" />
-            <QrCode className="h-5 w-5 text-primary" />
-            <span className="font-display text-lg font-bold">Collection</span>
+            <span className="font-display text-lg font-bold">Daet Museum Collection</span>
           </Link>
         </div>
       </header>
