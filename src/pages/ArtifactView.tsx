@@ -12,7 +12,15 @@ import {
   RefreshCw,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Share2,
+  Maximize2,
+  X,
+  ZoomIn,
+  ZoomOut,
+  Play,
+  Link2,
+  Check,
 } from "lucide-react";
 import { fetchArtifact, incrementViewCount, logQrScan } from "@/lib/supabase-helpers";
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
@@ -64,6 +72,14 @@ const ArtifactView = () => {
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const [touchEndX, setTouchEndX] = useState<number | null>(null);
 
+  // Interactivity state
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [zoomed, setZoomed] = useState(false);
+  const [zoomOrigin, setZoomOrigin] = useState("50% 50%");
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [overviewOpen, setOverviewOpen] = useState(true);
+  const [historyOpen, setHistoryOpen] = useState(true);
+
   // Extract clean ID from params or URL path
   const cleanId = useMemo(() => {
     const rawTarget = params.id || (params as any)["*"] || location.pathname;
@@ -79,6 +95,8 @@ const ArtifactView = () => {
 
   useEffect(() => {
     setCurrentIndex(0);
+    setLightboxOpen(false);
+    setZoomed(false);
   }, [cleanId]);
 
   // Query with guaranteed resolution/rejection within 6 seconds
@@ -169,13 +187,41 @@ const ArtifactView = () => {
 
   const handleNext = useCallback(() => {
     if (!mediaList.length) return;
+    setZoomed(false);
     setCurrentIndex((prev) => (prev + 1) % mediaList.length);
   }, [mediaList.length]);
 
   const handlePrev = useCallback(() => {
     if (!mediaList.length) return;
+    setZoomed(false);
     setCurrentIndex((prev) => (prev - 1 + mediaList.length) % mediaList.length);
   }, [mediaList.length]);
+
+  // Keyboard controls: arrows to browse, Escape to close the viewer
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      if (e.key === "ArrowRight") handleNext();
+      else if (e.key === "ArrowLeft") handlePrev();
+      else if (e.key === "Escape") {
+        setLightboxOpen(false);
+        setZoomed(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [handleNext, handlePrev]);
+
+  // Lock page scroll while the full-screen viewer is open
+  useEffect(() => {
+    if (!lightboxOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [lightboxOpen]);
 
   const minSwipeDistance = 45;
   const onTouchStart = (e: React.TouchEvent | React.MouseEvent) => {
@@ -210,6 +256,24 @@ const ArtifactView = () => {
         // Dismissed
       }
     }
+  };
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      // Clipboard unavailable
+    }
+  };
+
+  const handleLightboxImageClick = (e: React.MouseEvent<HTMLImageElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    setZoomOrigin(`${x}% ${y}%`);
+    setZoomed((z) => !z);
   };
 
   // 1. Invalid or missing ID
@@ -325,6 +389,16 @@ const ArtifactView = () => {
               <Eye className="h-3.5 w-3.5" />
               <span>{artifact.view_count || 0}</span>
             </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleCopyLink}
+              className="h-9 w-9 rounded-full text-[#221C14] hover:bg-[#EDE4CC]"
+              aria-label={linkCopied ? "Link copied" : "Copy link"}
+              title={linkCopied ? "Link copied" : "Copy link"}
+            >
+              {linkCopied ? <Check className="h-4 w-4 text-[#93702E]" /> : <Link2 className="h-4 w-4" />}
+            </Button>
             {typeof navigator !== "undefined" && "share" in navigator && (
               <Button
                 variant="ghost"
@@ -369,10 +443,11 @@ const ArtifactView = () => {
                       key={currentMediaUrl}
                       src={currentMediaUrl}
                       alt={artifact.name}
-                      className="h-full w-full object-cover transition-opacity duration-500 ease-out"
+                      className="h-full w-full cursor-zoom-in object-cover transition-opacity duration-500 ease-out"
                       draggable={false}
                       loading="eager"
                       decoding="async"
+                      onClick={() => setLightboxOpen(true)}
                     />
                   )
                 ) : (
@@ -380,6 +455,17 @@ const ArtifactView = () => {
                     <ImageIcon className="mb-2 h-10 w-10 opacity-30" />
                     <p className="font-mono text-xs uppercase tracking-wider">No record visuals available</p>
                   </div>
+                )}
+
+                {mediaList.length > 0 && (
+                  <button
+                    onClick={() => setLightboxOpen(true)}
+                    className="absolute right-3 top-3 rounded-full bg-[#F6F1E2]/90 p-2 text-[#221C14] opacity-100 transition-all hover:scale-110 active:scale-95 sm:right-4 sm:top-4 sm:opacity-0 sm:group-hover:opacity-100"
+                    aria-label="View full screen"
+                    title="View full screen"
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                  </button>
                 )}
 
                 {mediaList.length > 1 && (
@@ -401,10 +487,15 @@ const ArtifactView = () => {
 
                     <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-[#17130E]/60 px-3 py-1.5">
                       {mediaList.map((_, i) => (
-                        <div
+                        <button
                           key={i}
+                          onClick={() => {
+                            setZoomed(false);
+                            setCurrentIndex(i);
+                          }}
+                          aria-label={`Go to image ${i + 1}`}
                           className={`h-1 rounded-full transition-all duration-300 ${
-                            i === currentIndex ? "w-6 bg-[#F6F1E2]" : "w-1 bg-[#F6F1E2]/40"
+                            i === currentIndex ? "w-6 bg-[#F6F1E2]" : "w-1 bg-[#F6F1E2]/40 hover:bg-[#F6F1E2]/70"
                           }`}
                         />
                       ))}
@@ -412,6 +503,40 @@ const ArtifactView = () => {
                   </>
                 )}
               </div>
+
+              {mediaList.length > 1 && (
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {mediaList.map((url, i) => (
+                    <button
+                      key={url + i}
+                      onClick={() => {
+                        setZoomed(false);
+                        setCurrentIndex(i);
+                      }}
+                      aria-label={`Show image ${i + 1}`}
+                      className={`relative h-14 w-20 shrink-0 overflow-hidden rounded-sm border-2 bg-[#17130E] transition-all ${
+                        i === currentIndex
+                          ? "border-[#93702E] opacity-100"
+                          : "border-transparent opacity-60 hover:opacity-100"
+                      }`}
+                    >
+                      {isVideoUrl(url) ? (
+                        <div className="flex h-full w-full items-center justify-center text-[#F6F1E2]">
+                          <Play className="h-5 w-5" />
+                        </div>
+                      ) : (
+                        <img
+                          src={url}
+                          alt=""
+                          className="h-full w-full object-cover"
+                          draggable={false}
+                          loading="lazy"
+                        />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -445,29 +570,145 @@ const ArtifactView = () => {
 
               {artifact.description && (
                 <div className="mt-7 space-y-2.5 text-left">
-                  <h2 className="font-mono text-[11px] uppercase tracking-[0.16em] text-[#6B6252]">
-                    Overview
-                  </h2>
-                  <p className="max-w-[62ch] font-serif text-[17px] leading-relaxed text-[#221C14]/90">
-                    {artifact.description}
-                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setOverviewOpen((o) => !o)}
+                    aria-expanded={overviewOpen}
+                    className="flex w-full items-center justify-between font-mono text-[11px] uppercase tracking-[0.16em] text-[#6B6252] hover:text-[#221C14]"
+                  >
+                    <h2>Overview</h2>
+                    <ChevronDown
+                      className={`h-4 w-4 transition-transform duration-300 ${overviewOpen ? "rotate-180" : ""}`}
+                    />
+                  </button>
+                  {overviewOpen && (
+                    <p className="max-w-[62ch] font-serif text-[17px] leading-relaxed text-[#221C14]/90">
+                      {artifact.description}
+                    </p>
+                  )}
                 </div>
               )}
 
               {artifact.historical_background && (
                 <div className="mt-7 space-y-2.5 text-left">
-                  <h2 className="font-mono text-[11px] uppercase tracking-[0.16em] text-[#6B6252]">
-                    Historical context
-                  </h2>
-                  <p className="max-w-[62ch] font-serif text-[17px] leading-relaxed text-[#6B6252]">
-                    {artifact.historical_background}
-                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setHistoryOpen((o) => !o)}
+                    aria-expanded={historyOpen}
+                    className="flex w-full items-center justify-between font-mono text-[11px] uppercase tracking-[0.16em] text-[#6B6252] hover:text-[#221C14]"
+                  >
+                    <h2>Historical context</h2>
+                    <ChevronDown
+                      className={`h-4 w-4 transition-transform duration-300 ${historyOpen ? "rotate-180" : ""}`}
+                    />
+                  </button>
+                  {historyOpen && (
+                    <p className="max-w-[62ch] font-serif text-[17px] leading-relaxed text-[#6B6252]">
+                      {artifact.historical_background}
+                    </p>
+                  )}
                 </div>
               )}
             </div>
           </div>
         </div>
       </main>
+
+      {/* Full-screen viewer */}
+      {lightboxOpen && currentMediaUrl && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-[#0E0B07]/95 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${artifact.name} viewer`}
+          onClick={() => {
+            setLightboxOpen(false);
+            setZoomed(false);
+          }}
+        >
+          <div className="absolute left-0 right-0 top-0 flex items-center justify-between px-4 py-4 sm:px-6">
+            <span className="font-mono text-xs text-[#F6F1E2]/70">
+              {currentIndex + 1} / {mediaList.length}
+            </span>
+            <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+              {!isCurrentMediaVideo && (
+                <button
+                  onClick={() => setZoomed((z) => !z)}
+                  className="rounded-full bg-[#F6F1E2]/10 p-2.5 text-[#F6F1E2] transition-colors hover:bg-[#F6F1E2]/20"
+                  aria-label={zoomed ? "Zoom out" : "Zoom in"}
+                >
+                  {zoomed ? <ZoomOut className="h-5 w-5" /> : <ZoomIn className="h-5 w-5" />}
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setLightboxOpen(false);
+                  setZoomed(false);
+                }}
+                className="rounded-full bg-[#F6F1E2]/10 p-2.5 text-[#F6F1E2] transition-colors hover:bg-[#F6F1E2]/20"
+                aria-label="Close viewer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+
+          <div
+            className="flex h-full w-full items-center justify-center overflow-hidden px-4 py-16 sm:px-16"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {isCurrentMediaVideo ? (
+              <video
+                key={currentMediaUrl}
+                src={currentMediaUrl}
+                controls
+                autoPlay
+                muted
+                loop
+                playsInline
+                className="max-h-full max-w-full object-contain"
+              />
+            ) : (
+              <img
+                key={currentMediaUrl}
+                src={currentMediaUrl}
+                alt={artifact.name}
+                draggable={false}
+                onClick={handleLightboxImageClick}
+                style={{ transformOrigin: zoomOrigin }}
+                className={`max-h-full max-w-full select-none object-contain transition-transform duration-300 ease-out ${
+                  zoomed ? "scale-[2] cursor-zoom-out" : "scale-100 cursor-zoom-in"
+                }`}
+              />
+            )}
+          </div>
+
+          {mediaList.length > 1 && (
+            <>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handlePrev();
+                }}
+                className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-[#F6F1E2]/10 p-3 text-[#F6F1E2] transition-colors hover:bg-[#F6F1E2]/20 sm:left-6"
+                aria-label="Previous image"
+              >
+                <ChevronLeft className="h-6 w-6" />
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleNext();
+                }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-[#F6F1E2]/10 p-3 text-[#F6F1E2] transition-colors hover:bg-[#F6F1E2]/20 sm:right-6"
+                aria-label="Next image"
+              >
+                <ChevronRight className="h-6 w-6" />
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 };
