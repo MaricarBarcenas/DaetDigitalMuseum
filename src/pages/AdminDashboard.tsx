@@ -5,9 +5,9 @@ import {
   QrCode, Plus, Trash2, Pencil, LogOut, Layers, Image as ImageIcon,
   Eye, ClipboardList, CheckCircle, Search, Filter, Info, Calendar, MapPin,
   AlertTriangle, Loader2, Printer, Activity, Lightbulb, TrendingDown, ArrowUpRight, EyeOff, Download,
-  ShieldCheck, Users, UserPlus, Smartphone, Gauge, Lock, CheckCircle2, FileText, AlertCircle, Video,
+  Smartphone, Gauge, Lock, CheckCircle2, FileText, AlertCircle, Video,
   Menu, X, ChevronRight, ChevronLeft, FileSpreadsheet, Sun, Moon,
-  LayoutGrid, LayoutList, Volume2, VolumeX, Play
+  LayoutGrid, LayoutList, Volume2, VolumeX, Play, RotateCcw
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAdminArtifacts, fetchCategories, getUserRole, logActivity } from "@/lib/supabase-helpers";
@@ -39,17 +39,24 @@ const isVideoUrl = (url?: string | null) => {
   return /\.(mp4|webm|ogg|mov|m4v|mkv)(\?.*)?$/i.test(url) || url.includes("/video/") || url.includes("video");
 };
 
+// Extract the storage object path from a public URL of the artifact-images bucket
+const storagePathFromUrl = (url: string) => {
+  const marker = "/artifact-images/";
+  const i = url.indexOf(marker);
+  return i === -1 ? null : decodeURIComponent(url.slice(i + marker.length).split("?")[0]);
+};
+
 // -----------------------------------------------------------------------
 // Navigation model — single source of truth for the sidebar
 // -----------------------------------------------------------------------
-type SectionId = "artifacts" | "categories" | "analytics" | "logs" | "users";
+type SectionId = "artifacts" | "categories" | "analytics" | "logs" | "trash";
 
 const NAV_ITEMS: { id: SectionId; label: string; icon: React.ReactNode; adminOnly?: boolean }[] = [
   { id: "artifacts", label: "Artifacts", icon: <Layers className="h-4 w-4" /> },
   { id: "categories", label: "Categories", icon: <QrCode className="h-4 w-4" />, adminOnly: true },
   { id: "analytics", label: "Analytics", icon: <Activity className="h-4 w-4" />, adminOnly: true },
+  { id: "trash", label: "Trash", icon: <Trash2 className="h-4 w-4" /> },
   { id: "logs", label: "Audit Logs", icon: <ClipboardList className="h-4 w-4" /> },
-  { id: "users", label: "Staff", icon: <Users className="h-4 w-4" />, adminOnly: true },
 ];
 
 // -----------------------------------------------------------------------
@@ -530,7 +537,10 @@ const AdminDashboard = () => {
     check();
   }, [navigate, toast]);
 
-  const { data: artifacts } = useQuery({ queryKey: ["admin_artifacts"], queryFn: fetchAdminArtifacts, enabled: isAdmin !== null });
+  const { data: allArtifacts } = useQuery({ queryKey: ["admin_artifacts"], queryFn: fetchAdminArtifacts, enabled: isAdmin !== null });
+  // Soft delete: trashed rows carry a deleted_at timestamp. Everything else in the dashboard only sees active items.
+  const artifacts = useMemo(() => (allArtifacts || []).filter((a: any) => !a.deleted_at), [allArtifacts]);
+  const trashedArtifacts = useMemo(() => (allArtifacts || []).filter((a: any) => a.deleted_at), [allArtifacts]);
   const { data: categories } = useQuery({ queryKey: ["categories"], queryFn: fetchCategories, enabled: isAdmin !== null });
 
   const handleLogout = async () => {
@@ -847,7 +857,7 @@ const AdminDashboard = () => {
 
           {activeSection === "categories" && isAdmin && <CategoriesTab />}
           {activeSection === "analytics" && isAdmin && <AnalyticsTab artifacts={artifacts || []} />}
-          {activeSection === "users" && isAdmin && <UsersTab />}
+          {activeSection === "trash" && <TrashTab trashed={trashedArtifacts} isAdmin={!!isAdmin} />}
           {activeSection === "logs" && <ActivityLogsTab />}
         </main>
       </div>
@@ -889,6 +899,11 @@ const ArtifactsTab = ({ artifacts, categories, isAdmin }: { artifacts: any; cate
     condition_status: "Good"
   });
   const [files, setFiles] = useState<FileList | null>(null);
+
+  // Existing media of the artifact being edited, and the ones marked for removal
+  const [existingMedia, setExistingMedia] = useState<string[]>([]);
+  const [removedMedia, setRemovedMedia] = useState<string[]>([]);
+
   const [saving, setSaving] = useState(false);
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
 
@@ -959,6 +974,8 @@ const ArtifactsTab = ({ artifacts, categories, isAdmin }: { artifacts: any; cate
     setForm({ name: "", category_id: "", description: "", historical_background: "", date_origin: "", location_found: "", display_location: "", condition_status: "Good" });
     setFiles(null);
     setEditId(null);
+    setExistingMedia([]);
+    setRemovedMedia([]);
   };
 
   const openEdit = (artifact: any) => {
@@ -973,6 +990,15 @@ const ArtifactsTab = ({ artifacts, categories, isAdmin }: { artifacts: any; cate
       display_location: artifact.display_location || "",
       condition_status: artifact.condition_status || "Good",
     });
+
+    // Load the current media (cover first, no duplicates)
+    const gallery = [...(artifact.artifact_images || [])]
+      .sort((a: any, b: any) => (a.display_order ?? 0) - (b.display_order ?? 0))
+      .map((img: any) => img.image_url)
+      .filter(Boolean) as string[];
+    setExistingMedia(Array.from(new Set(artifact.image_url ? [artifact.image_url, ...gallery] : gallery)));
+    setRemovedMedia([]);
+
     setOpen(true);
   };
 
@@ -993,6 +1019,25 @@ const ArtifactsTab = ({ artifacts, categories, isAdmin }: { artifacts: any; cate
         await supabase.from("artifacts").update({ qr_code_url: `/artifact/${artifactId}` }).eq("id", artifactId);
       }
 
+      const remainingMedia = existingMedia.filter((u) => !removedMedia.includes(u));
+
+      // Remove the media the user marked for deletion
+      if (editId && removedMedia.length > 0) {
+        for (const url of removedMedia) {
+          const { error: delErr } = await supabase
+            .from("artifact_images")
+            .delete()
+            .eq("artifact_id", editId)
+            .eq("image_url", url);
+          if (delErr) throw delErr;
+
+          const path = storagePathFromUrl(url);
+          if (path) await supabase.storage.from("artifact-images").remove([path]); // best effort
+        }
+        // Keep the cover valid: first remaining item, or none
+        await supabase.from("artifacts").update({ image_url: remainingMedia[0] ?? null }).eq("id", editId);
+      }
+
       if (files && files.length > 0 && artifactId) {
         const uploadPromises = Array.from(files).map(async (file, i) => {
           const fileExt = file.name.split('.').pop();
@@ -1010,10 +1055,11 @@ const ArtifactsTab = ({ artifacts, categories, isAdmin }: { artifacts: any; cate
           await supabase.from("artifact_images").insert({
             artifact_id: artifactId,
             image_url: publicUrl,
-            display_order: i
+            display_order: remainingMedia.length + i
           });
 
-          if (i === 0) {
+          // Only become the cover when no other media remains
+          if (remainingMedia.length === 0 && i === 0) {
             await supabase.from("artifacts").update({ image_url: publicUrl }).eq("id", artifactId);
           }
         });
@@ -1059,16 +1105,18 @@ const ArtifactsTab = ({ artifacts, categories, isAdmin }: { artifacts: any; cate
   const executeDelete = async () => {
     try {
       if (isBulkDelete) {
-        await supabase.from("artifacts").delete().in("id", selectedIds);
-        await logActivity("Bulk Delete", `Purged ${selectedIds.length} artifact records`);
+        const { error } = await supabase.from("artifacts").update({ deleted_at: new Date().toISOString() }).in("id", selectedIds);
+        if (error) throw error;
+        await logActivity("Bulk Delete", `Moved ${selectedIds.length} artifact records to Trash`);
         setSelectedIds([]);
       } else if (itemToDelete) {
-        await supabase.from("artifacts").delete().eq("id", itemToDelete);
-        await logActivity("Delete Artifact", `Deleted artifact ID: ${itemToDelete}`);
+        const { error } = await supabase.from("artifacts").update({ deleted_at: new Date().toISOString() }).eq("id", itemToDelete);
+        if (error) throw error;
+        await logActivity("Delete Artifact", `Moved artifact ID ${itemToDelete} to Trash`);
         setSelectedIds(prev => prev.filter(id => id !== itemToDelete));
       }
       queryClient.invalidateQueries({ queryKey: ["admin_artifacts"] });
-      toast({ title: "Record deleted", variant: "destructive", className: "bg-red-600 text-white" });
+      toast({ title: "Moved to Trash", description: "You can restore it from the Trash tab." });
     } catch (err) {
       toast({ title: "Delete Failed", variant: "destructive" });
     } finally {
@@ -1564,7 +1612,7 @@ const ArtifactsTab = ({ artifacts, categories, isAdmin }: { artifacts: any; cate
             </div>
             <DialogTitle className="text-center">Confirm deletion</DialogTitle>
           </DialogHeader>
-          <p className="text-center text-muted-foreground text-sm">This action cannot be undone and purges archival logs.</p>
+          <p className="text-center text-muted-foreground text-sm">This moves the item to Trash. You can restore it later.</p>
           <DialogFooter className="mt-4 flex flex-col sm:flex-row gap-2">
             <Button variant="ghost" onClick={() => setDeleteDialogOpen(false)} className="flex-1">Cancel</Button>
             <Button variant="destructive" onClick={executeDelete} className="flex-1">Yes, delete</Button>
@@ -1603,6 +1651,49 @@ const ArtifactsTab = ({ artifacts, categories, isAdmin }: { artifacts: any; cate
               <Input placeholder="e.g., Room A, Showcase 3, Main Hallway" value={form.display_location} onChange={(e) => setForm({ ...form, display_location: e.target.value })} />
             </div>
 
+            {/* Current media — click X to mark an item for removal */}
+            {editId && existingMedia.length > 0 && (
+              <div className="space-y-2">
+                <Label>Current media ({existingMedia.length - removedMedia.length})</Label>
+                <div className="grid grid-cols-4 gap-2">
+                  {existingMedia.map((url) => {
+                    const removed = removedMedia.includes(url);
+                    return (
+                      <div
+                        key={url}
+                        className={`relative aspect-square overflow-hidden rounded-md border border-border bg-muted transition-opacity ${removed ? "opacity-30" : ""}`}
+                      >
+                        {isVideoUrl(url) ? (
+                          <>
+                            <video src={url} className="h-full w-full object-cover" muted playsInline preload="metadata" />
+                            <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/30">
+                              <Video className="h-4 w-4 text-white" />
+                            </span>
+                          </>
+                        ) : (
+                          <img src={url} alt="" className="h-full w-full object-cover" />
+                        )}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setRemovedMedia((prev) => removed ? prev.filter((u) => u !== url) : [...prev, url])
+                          }
+                          className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white transition hover:bg-destructive"
+                          aria-label={removed ? "Undo remove" : "Remove"}
+                          title={removed ? "Undo remove" : "Remove"}
+                        >
+                          {removed ? <Plus className="h-3 w-3 rotate-45" /> : <X className="h-3 w-3" />}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Click X to mark an item for removal. It is deleted when you press Save record. Click again to undo.
+                </p>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label>Photos & videos (select multiple)</Label>
               <Input
@@ -1623,107 +1714,141 @@ const ArtifactsTab = ({ artifacts, categories, isAdmin }: { artifacts: any; cate
 };
 
 // -----------------------------------------------------------------------
-// Staff directory — same functionality, quieter list treatment
+// Trash — soft-deleted artifacts. Restore them or delete them for good.
 // -----------------------------------------------------------------------
-const UsersTab = () => {
-  const { toast } = useToast();
+const TrashTab = ({ trashed, isAdmin }: { trashed: any[]; isAdmin: boolean }) => {
   const queryClient = useQueryClient();
-  const [loading, setLoading] = useState(false);
-  const [newUser, setNewUser] = useState({ email: "", password: "" });
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [userIdToDelete, setUserIdToDelete] = useState<string | null>(null);
+  const { toast } = useToast();
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<{ ids: string[]; label: string } | null>(null);
 
-  const { data: staff, isLoading } = useQuery({
-    queryKey: ["staff_list"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("user_roles").select("*").eq("role", "staff");
-      if (error) throw error;
-      return data;
-    },
-  });
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["admin_artifacts"] });
 
-  const handleRegisterStaff = async () => {
-    if (!newUser.email || newUser.password.length < 6) {
-      toast({ title: "Check credentials", description: "Email and 6+ character password required.", variant: "destructive" });
+  const handleRestore = async (a: any) => {
+    setBusyId(a.id);
+    const { error } = await supabase.from("artifacts").update({ deleted_at: null }).eq("id", a.id);
+    setBusyId(null);
+    if (error) {
+      toast({ title: "Restore failed", description: error.message, variant: "destructive" });
       return;
     }
-    setLoading(true);
+    await logActivity("Restore Artifact", `Restored from Trash: ${a.name}`);
+    refresh();
+    toast({ title: "Restored", description: a.name, className: "bg-green-600 text-white" });
+  };
+
+  const purge = async (ids: string[]) => {
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email: newUser.email,
-        password: newUser.password,
-        options: { data: { role: 'staff' } }
+      const items = trashed.filter((a) => ids.includes(a.id));
+
+      // Best-effort cleanup of the uploaded photos/videos
+      const paths = items.flatMap((a) => {
+        const urls = [a.image_url, ...(a.artifact_images || []).map((i: any) => i.image_url)].filter(Boolean);
+        return Array.from(new Set(urls)).map((u: any) => storagePathFromUrl(u)).filter(Boolean) as string[];
       });
+      if (paths.length) await supabase.storage.from("artifact-images").remove(paths);
+
+      const { error } = await supabase.from("artifacts").delete().in("id", ids);
       if (error) throw error;
-      if (data.user) {
-        await supabase.from("user_roles").insert([{ user_id: data.user.id, role: 'staff', email: newUser.email }]);
-      }
-      toast({ title: "Staff account created", className: "bg-green-600 text-white" });
-      queryClient.invalidateQueries({ queryKey: ["staff_list"] });
-      setNewUser({ email: "", password: "" });
+
+      await logActivity("Permanent Delete", `Permanently deleted ${items.length} artifact(s): ${items.map((i) => i.name).join(", ")}`);
+      refresh();
+      toast({ title: "Permanently deleted", variant: "destructive", className: "bg-red-600 text-white" });
     } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      toast({ title: "Delete failed", description: err.message, variant: "destructive" });
     } finally {
-      setLoading(false);
+      setConfirm(null);
     }
   };
 
-  const executeDeleteStaff = async () => {
-    if (!userIdToDelete) return;
-    try {
-      await supabase.from("user_roles").delete().eq("user_id", userIdToDelete);
-      toast({ title: "Staff access revoked", className: "bg-red-600 text-white" });
-      queryClient.invalidateQueries({ queryKey: ["staff_list"] });
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally {
-      setDeleteDialogOpen(false);
-      setUserIdToDelete(null);
-    }
-  };
+  const daysLeft = (d: string) =>
+    Math.max(0, 30 - Math.floor((Date.now() - new Date(d).getTime()) / 86400000));
 
   return (
-    <div className="space-y-5">
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="sm:max-w-[400px] rounded-2xl">
-          <DialogHeader><DialogTitle className="text-center">Revoke staff access?</DialogTitle></DialogHeader>
-          <DialogFooter className="mt-4 flex flex-col gap-2">
-            <Button variant="destructive" onClick={executeDeleteStaff} className="w-full">Revoke access</Button>
-            <Button variant="ghost" onClick={() => setDeleteDialogOpen(false)} className="w-full">Cancel</Button>
+    <div>
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-muted-foreground">
+          Deleted artifacts stay here for 30 days. Their QR codes stop working until restored.
+        </p>
+        {isAdmin && trashed.length > 0 && (
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => setConfirm({ ids: trashed.map((a) => a.id), label: `All ${trashed.length} items` })}
+          >
+            <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Empty Trash
+          </Button>
+        )}
+      </div>
+
+      {trashed.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
+          Trash is empty.
+        </div>
+      ) : (
+        <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+          {trashed.map((a) => {
+            const media = a.image_url || a.artifact_images?.[0]?.image_url;
+            return (
+              <div key={a.id} className="flex items-center gap-3 bg-card p-3.5">
+                <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center overflow-hidden rounded-md border border-border bg-muted">
+                  {media && !isVideoUrl(media) ? (
+                    <img src={media} alt={a.name} className="h-full w-full object-cover opacity-70" />
+                  ) : media ? (
+                    <Video className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{a.name}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Deleted {new Date(a.deleted_at).toLocaleDateString()} · {daysLeft(a.deleted_at)} days left
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5 text-xs"
+                  disabled={busyId === a.id}
+                  onClick={() => handleRestore(a)}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" /> Restore
+                </Button>
+                {isAdmin && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0"
+                    title="Delete permanently"
+                    onClick={() => setConfirm({ ids: [a.id], label: `"${a.name}"` })}
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <Dialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
+        <DialogContent className="rounded-2xl sm:max-w-[400px]">
+          <DialogHeader>
+            <div className="mx-auto mb-2 flex h-11 w-11 items-center justify-center rounded-full bg-destructive/10">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+            </div>
+            <DialogTitle className="text-center">Delete permanently?</DialogTitle>
+          </DialogHeader>
+          <p className="text-center text-sm text-muted-foreground">
+            {confirm?.label} and its photos/videos will be gone for good. This cannot be undone.
+          </p>
+          <DialogFooter className="mt-4 flex flex-col gap-2 sm:flex-row">
+            <Button variant="ghost" className="flex-1" onClick={() => setConfirm(null)}>Cancel</Button>
+            <Button variant="destructive" className="flex-1" onClick={() => confirm && purge(confirm.ids)}>Delete forever</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-muted-foreground" /> Staff directory</h2>
-        <Dialog>
-          <DialogTrigger asChild><Button size="sm"><UserPlus className="mr-2 h-4 w-4" /> Add staff curator</Button></DialogTrigger>
-          <DialogContent className="rounded-2xl">
-            <DialogHeader><DialogTitle>Register staff account</DialogTitle></DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-1.5"><Label>Email</Label><Input type="email" value={newUser.email} onChange={(e) => setNewUser({...newUser, email: e.target.value})} /></div>
-              <div className="space-y-1.5"><Label>Password</Label><Input type="password" value={newUser.password} onChange={(e) => setNewUser({...newUser, password: e.target.value})} /></div>
-              <Button className="w-full h-11" onClick={handleRegisterStaff} disabled={loading}>{loading ? <Loader2 className="animate-spin" /> : "Create curator account"}</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
-        {isLoading ? (
-          <div className="flex justify-center py-10"><Loader2 className="animate-spin h-5 w-5 text-muted-foreground" /></div>
-        ) : staff?.length === 0 ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">No staff accounts yet.</div>
-        ) : staff?.map((u: any) => (
-          <div key={u.user_id} className="flex items-center justify-between p-3.5 bg-card">
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center text-sm font-semibold">{u.email?.[0].toUpperCase()}</div>
-              <div><p className="font-medium text-sm">{u.email}</p><p className="text-[10px] uppercase font-medium text-muted-foreground">{u.role}</p></div>
-            </div>
-            <Button variant="ghost" size="icon" onClick={() => { setUserIdToDelete(u.user_id); setDeleteDialogOpen(true); }} className="text-destructive"><Trash2 className="h-4 w-4" /></Button>
-          </div>
-        ))}
-      </div>
     </div>
   );
 };
