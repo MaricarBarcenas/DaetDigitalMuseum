@@ -10,7 +10,7 @@ const corsHeaders = {
 };
 
 // If Google retires this model name, check https://ai.google.dev/gemini-api/docs/models
-const MODEL = "gemini-3.8-flash";
+const MODEL = "gemini-2.5-flash";
 const MAX_HISTORY = 10;
 const MAX_CHARS = 500;
 
@@ -91,8 +91,9 @@ Deno.serve(async (req) => {
     );
 
     if (!res.ok) {
-      console.error("Gemini error", res.status, await res.text());
-      return json({ error: "The guide is unavailable right now. Please try again later." }, 502);
+      const detail = await res.text();
+      console.error("Gemini error", res.status, detail);
+      return json({ error: `Gemini ${res.status}: ${detail.slice(0, 300)}` }, 502);
     }
 
     const result = await res.json();
