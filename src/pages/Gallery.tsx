@@ -11,7 +11,6 @@ import {
   Search,
   X,
   Heart,
-  Shuffle,
   ChevronLeft,
   ChevronRight,
   LayoutGrid,
@@ -395,13 +394,6 @@ const Gallery = () => {
     setTimeout(() => setHighlightId((h) => (h === id ? null : h)), 2600);
   };
 
-  const surpriseMe = () => {
-    if (!visible?.length) return;
-    const pool = visible.length > 1 ? visible.filter((a: any) => a.id !== activeId) : visible;
-    const pick = pool[Math.floor(Math.random() * pool.length)];
-    focusArtifact(pick.id);
-  };
-
   // Open a specific artifact from a shared link like /gallery#artifact-<id>
   useEffect(() => {
     if (deepLinkHandled.current || !artifacts?.length) return;
@@ -545,7 +537,7 @@ const Gallery = () => {
           </div>
         )}
 
-        {/* Search, sort, view toggle and Surprise Me */}
+        {/* Search, sort and view toggle */}
         <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-center">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -602,17 +594,6 @@ const Gallery = () => {
                 <List className="h-4 w-4" />
               </button>
             </div>
-
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-10 rounded-full px-4"
-              onClick={surpriseMe}
-              disabled={!visible?.length}
-            >
-              <Shuffle className="mr-1.5 h-4 w-4 text-primary" />
-              Surprise me
-            </Button>
           </div>
         </div>
 
