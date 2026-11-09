@@ -1,19 +1,31 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
-import { QrCode, ArrowLeft, ImageOff } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { QrCode, ArrowLeft, ImageOff, Sparkles, MapPin, Landmark } from "lucide-react";
 import { fetchArtifacts, fetchCategories } from "@/lib/supabase-helpers";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 
+// Shows only a short teaser of the description so visitors want to see the full story at the museum.
+const makeTeaser = (text?: string | null, max = 90) => {
+  if (!text) return null;
+  const clean = text.trim().replace(/\s+/g, " ");
+  if (clean.length <= max) return clean + "…";
+  const cut = clean.slice(0, max);
+  return cut.slice(0, cut.lastIndexOf(" ") > 40 ? cut.lastIndexOf(" ") : max) + "…";
+};
+
 const Gallery = () => {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const { data: artifacts, isLoading } = useQuery({ queryKey: ["artifacts"], queryFn: fetchArtifacts });
   const { data: categories } = useQuery({ queryKey: ["categories"], queryFn: fetchCategories });
 
   const filtered = selectedCategory
     ? artifacts?.filter((a: any) => a.category_id === selectedCategory)
     : artifacts;
+
+  const getCategoryName = (id: string) => categories?.find((c: any) => c.id === id)?.name;
 
   return (
     <div className="min-h-screen bg-background">
@@ -70,6 +82,12 @@ const Gallery = () => {
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {filtered.map((artifact: any, i: number) => {
               const mainImage = artifact.artifact_images?.[0]?.image_url;
+              const isActive = activeId === artifact.id;
+              const teaser = makeTeaser(artifact.description);
+              const categoryName = getCategoryName(artifact.category_id);
+              const era = artifact.period || artifact.era || artifact.year;
+              const origin = artifact.origin || artifact.location;
+
               return (
                 <motion.div
                   key={artifact.id}
@@ -77,9 +95,27 @@ const Gallery = () => {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.05, duration: 0.4 }}
                 >
-                  {/* Pinalitan ang <Link> ng <div> para hindi ma-click */}
-                  <div className="group block overflow-hidden rounded-xl border border-border bg-card shadow-museum transition-all hover:-translate-y-1 hover:shadow-lg">
-                    <div className="aspect-[4/3] overflow-hidden bg-muted">
+                  {/* Not a link (not clickable to a detail page). Interactive: hover on desktop, tap on mobile to reveal a teaser. */}
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={isActive}
+                    onClick={() => setActiveId(isActive ? null : artifact.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setActiveId(isActive ? null : artifact.id);
+                      }
+                    }}
+                    onMouseEnter={(e) => {
+                      if (window.matchMedia("(hover: hover)").matches) setActiveId(artifact.id);
+                    }}
+                    onMouseLeave={() => {
+                      if (window.matchMedia("(hover: hover)").matches) setActiveId(null);
+                    }}
+                    className="group block cursor-pointer overflow-hidden rounded-xl border border-border bg-card shadow-museum transition-all hover:-translate-y-1 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    <div className="relative aspect-[4/3] overflow-hidden bg-muted">
                       {mainImage ? (
                         <img src={mainImage} alt={artifact.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                       ) : (
@@ -87,9 +123,60 @@ const Gallery = () => {
                           <ImageOff className="h-10 w-10" />
                         </div>
                       )}
+
+                      {/* Hint badge shown while the teaser is hidden */}
+                      {!isActive && (
+                        <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-full bg-background/80 px-3 py-1 text-xs font-medium backdrop-blur-sm">
+                          <Sparkles className="h-3 w-3 text-primary" />
+                          <span>Peek inside</span>
+                        </div>
+                      )}
+
+                      {/* Teaser overlay */}
+                      <AnimatePresence>
+                        {isActive && (
+                          <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.25 }}
+                            className="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/85 via-black/60 to-black/10 p-4 text-left text-white"
+                          >
+                            <motion.div
+                              initial={{ y: 12, opacity: 0 }}
+                              animate={{ y: 0, opacity: 1 }}
+                              transition={{ delay: 0.05, duration: 0.3 }}
+                              className="space-y-2"
+                            >
+                              {(categoryName || era || origin) && (
+                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] uppercase tracking-wide text-white/80">
+                                  {categoryName && (
+                                    <span className="flex items-center gap-1">
+                                      <Landmark className="h-3 w-3" />
+                                      {categoryName}
+                                    </span>
+                                  )}
+                                  {era && <span>{String(era)}</span>}
+                                  {origin && (
+                                    <span className="flex items-center gap-1">
+                                      <MapPin className="h-3 w-3" />
+                                      {String(origin)}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                              {teaser && <p className="text-sm leading-snug text-white/95">{teaser}</p>}
+                              <p className="flex items-center gap-1 text-xs font-semibold text-amber-300">
+                                <Sparkles className="h-3 w-3" />
+                                The full story is waiting at the museum
+                              </p>
+                            </motion.div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
-                    
-                    {/* Title and prompt na lang ang iniwan natin */}
+
+                    {/* Title and prompt */}
                     <div className="p-5 text-center">
                       <h3 className="font-display text-lg font-semibold">{artifact.name}</h3>
                       <div className="mt-3 flex items-center justify-center gap-1 text-xs font-medium text-muted-foreground bg-secondary/50 py-1.5 rounded-md">
