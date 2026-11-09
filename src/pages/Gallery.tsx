@@ -492,8 +492,8 @@ const Gallery = () => {
       </header>
 
       <main className="container py-12">
-        <h1 className="mb-2 font-display text-4xl font-bold">Artifact Gallery</h1>
-        <p className="mb-8 text-muted-foreground">Browse the cultural treasures of Daet.</p>
+        <h1 className="mb-2 text-center font-display text-4xl font-bold">Artifact Gallery</h1>
+        <p className="mb-8 text-center text-muted-foreground">Browse the cultural treasures of Daet.</p>
 
         {/* Reveal progress + Museum Passport entry */}
         {totalCount > 0 && (
