@@ -10,7 +10,7 @@ const corsHeaders = {
 };
 
 // If Google retires this model name, check https://ai.google.dev/gemini-api/docs/models
-const MODEL = "gemini-2.5-flash";
+const MODEL = "gemini-3.8-flash";
 const MAX_HISTORY = 10;
 const MAX_CHARS = 500;
 

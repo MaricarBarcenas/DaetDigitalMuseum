@@ -543,6 +543,23 @@ const AdminDashboard = () => {
   const trashedArtifacts = useMemo(() => (allArtifacts || []).filter((a: any) => a.deleted_at), [allArtifacts]);
   const { data: categories } = useQuery({ queryKey: ["categories"], queryFn: fetchCategories, enabled: isAdmin !== null });
 
+  // Trash notification: count items trashed since the Trash tab was last opened
+  const [trashSeenAt, setTrashSeenAt] = useState<number>(() => {
+    try { return Number(localStorage.getItem("trash_seen_at")) || 0; } catch { return 0; }
+  });
+
+  const unseenTrashCount = useMemo(
+    () => trashedArtifacts.filter((a: any) => new Date(a.deleted_at).getTime() > trashSeenAt).length,
+    [trashedArtifacts, trashSeenAt]
+  );
+
+  useEffect(() => {
+    if (activeSection !== "trash") return;
+    const now = Date.now();
+    try { localStorage.setItem("trash_seen_at", String(now)); } catch {}
+    setTrashSeenAt(now);
+  }, [activeSection, trashedArtifacts.length]);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate("/admin/login");
@@ -774,7 +791,12 @@ const AdminDashboard = () => {
               >
                 {item.icon}
                 {item.label}
-                {isActive && <ChevronRight className="h-3.5 w-3.5 ml-auto" />}
+                {item.id === "trash" && unseenTrashCount > 0 && (
+                  <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[10px] font-bold text-white">
+                    {unseenTrashCount > 99 ? "99+" : unseenTrashCount}
+                  </span>
+                )}
+                {isActive && <ChevronRight className={`h-3.5 w-3.5 ${item.id === "trash" && unseenTrashCount > 0 ? "" : "ml-auto"}`} />}
               </button>
             );
           })}
@@ -792,11 +814,14 @@ const AdminDashboard = () => {
         <header className="sticky top-0 z-30 flex items-center justify-between h-14 px-4 sm:px-6 border-b border-border bg-background/90 backdrop-blur-sm">
           <div className="flex items-center gap-3">
             <button
-              className="lg:hidden text-muted-foreground"
+              className="lg:hidden relative text-muted-foreground"
               onClick={() => setSidebarOpen(true)}
               aria-label="Open menu"
             >
               <Menu className="h-5 w-5" />
+              {unseenTrashCount > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-destructive" />
+              )}
             </button>
             <h1 className="text-sm font-semibold">{sectionLabel}</h1>
           </div>
@@ -922,6 +947,8 @@ const ArtifactsTab = ({ artifacts, categories, isAdmin }: { artifacts: any; cate
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const qrRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+  // Prevents a fast double-click from submitting the same record twice
+  const saveLock = useRef(false);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -1002,8 +1029,38 @@ const ArtifactsTab = ({ artifacts, categories, isAdmin }: { artifacts: any; cate
     setOpen(true);
   };
 
+  const normalizeText = (s?: string | null) => (s || "").trim().toLowerCase().replace(/\s+/g, " ");
+
+  // Returns which field clashes with another artifact, or null if the record is unique
+  const findDuplicateField = (): string | null => {
+    const name = normalizeText(form.name);
+    const desc = normalizeText(form.description);
+    const hist = normalizeText(form.historical_background);
+
+    for (const a of (artifacts || [])) {
+      if (a.id === editId) continue; // the record being edited doesn't count
+      if (name && normalizeText(a.name) === name) return "name";
+      if (desc && normalizeText(a.description) === desc) return "description";
+      if (hist && normalizeText(a.historical_background) === hist) return "historical background";
+    }
+    return null;
+  };
+
   const handleSave = async () => {
+    if (saveLock.current) return;
     if (!form.name.trim()) { toast({ title: "Name is required", variant: "destructive" }); return; }
+
+    const duplicateField = findDuplicateField();
+    if (duplicateField) {
+      toast({
+        title: "Duplicate artifact",
+        description: `Another artifact already has the same ${duplicateField}. Please enter unique details.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    saveLock.current = true;
     setSaving(true);
     try {
       const payload = { ...form, category_id: form.category_id || null, status: isAdmin ? 'approved' : 'pending' };
@@ -1075,6 +1132,7 @@ const ArtifactsTab = ({ artifacts, categories, isAdmin }: { artifacts: any; cate
       console.error(err);
       toast({ title: "Error", description: err.message || "Failed to save record", variant: "destructive" });
     } finally {
+      saveLock.current = false;
       setSaving(false);
     }
   };
